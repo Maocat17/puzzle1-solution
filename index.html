@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>5x5 益智拼圖答案計算器</title>
+    <style>
+        :root {
+            --color-p0: #9c27b0; /* 紫 */
+            --color-p1: #ff9800; /* 橘 */
+            --color-p2: #3f51b5; /* 靛 */
+            --color-p3: #e91e63; /* 桃 */
+            --color-p4: #ffeb3b; /* 黃 */
+            --color-p5: #00bcd4; /* 青 */
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 15px;
+            margin: 0;
+            user-select: none;
+        }
+
+        h1 { 
+            color: #333; 
+            margin-bottom: 20px; 
+            font-size: 24px;
+            text-align: center;
+        }
+
+        .game-container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            width: 100%;
+            max-width: 380px;
+        }
+
+        /* 題目編號與狀態顯示 */
+        .quiz-info-panel {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            padding: 12px;
+            border-radius: 8px;
+            width: 100%;
+            text-align: center;
+            margin-bottom: 15px;
+            font-weight: bold;
+            color: #1565c0;
+            font-size: 14px;
+        }
+
+        /* 5x5 棋盤 - 精確計算尺寸 */
+        .board {
+            display: grid;
+            grid-template-columns: repeat(5, 60px);
+            grid-template-rows: repeat(5, 60px);
+            gap: 5px;
+            background-color: #e0e0e0;
+            padding: 6px;
+            border-radius: 8px;
+            margin: 0 auto 15px auto;
+            width: 331px;
+            height: 331px;
+        }
+        .cell {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 15px;
+            cursor: pointer;
+            background-color: #fff;
+            border-radius: 6px;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        .board.setup-phase .cell:active { transform: scale(0.95); }
+        .board.setup-phase .bg-green { background-color: #a1e3a1; }
+        .board.setup-phase .bg-blue  { background-color: #90caf9; }
+        .board.setup-phase .bg-red   { background-color: #ef9a9a; }
+        .board.setup-phase .bg-white { background-color: #ffffff; }
+        
+        .board.solved-phase .cell { cursor: default; }
+
+        .cell.blocked { background-color: #333333 !important; }
+        .cell.blocked::after { content: "✕"; font-size: 24px; color: #ff4d4d; }
+
+        .status-bar {
+            margin: 5px 0 15px 0;
+            font-size: 15px;
+            font-weight: bold;
+            color: #333;
+            text-align: center;
+            min-height: 22px;
+        }
+
+        /* 下方積木狀態欄：改為 6 等分單行並列 */
+        .inventory-icons {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 4px;
+            width: 100%;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 8px;
+            justify-items: center;
+        }
+        .icon-card {
+            border: 2px solid #ccc;
+            background: white;
+            border-radius: 6px;
+            padding: 6px 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.4;
+            transition: opacity 0.3s, border-color 0.3s;
+            width: 100%;
+            aspect-ratio: 1; /* 保持正方形外觀比例 */
+        }
+        .icon-card.used { border-color: #4caf50; opacity: 1; }
+        .mini-grid { display: grid; gap: 1px; background: #eee; padding: 1px; }
+        .mini-cell { width: 8px; height: 8px; } /* 縮小格子尺寸以適應 6 行單排佈局 */
+        .mini-cell.filled { background-color: #666; }
+        .icon-card.used .mini-cell.filled.p-0 { background-color: var(--color-p0); }
+        .icon-card.used .mini-cell.filled.p-1 { background-color: var(--color-p1); }
+        .icon-card.used .mini-cell.filled.p-2 { background-color: var(--color-p2); }
+        .icon-card.used .mini-cell.filled.p-3 { background-color: var(--color-p3); }
+        .icon-card.used .mini-cell.filled.p-4 { background-color: var(--color-p4); }
+        .icon-card.used .mini-cell.filled.p-5 { background-color: var(--color-p5); }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            font-size: 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+            margin-bottom: 8px;
+        }
+        button:active { transform: scale(0.98); }
+        .btn-calc { background-color: #4caf50; color: white; box-shadow: 0 4px 10px rgba(76, 175, 80, 0.3); font-size: 16px; }
+        .btn-calc:hover { background-color: #43a047; }
+        .btn-reset { background-color: #757575; color: white; }
+        .btn-reset:hover { background-color: #616161; }
+
+        .toast-container {
+            position: fixed;
+            top: -60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #323232;
+            color: #fff;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 25px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 9999;
+            transition: top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
+            opacity: 0;
+        }
+        .toast-container.show { top: 30px; opacity: 1; }
+        .toast-error { background-color: #d32f2f; }
+    </style>
+</head>
+<body>
+
+    <h1>🧩 5x5 益智拼圖答案計算器</h1>
+
+    <div class="game-container">
+        <div class="quiz-info-panel" id="quiz-info">
+            👉 步驟一：請在下方點選設定阻擋格
+        </div>
+
+        <div class="board setup-phase" id="game-board"></div>
+        <div class="status-bar" id="status-msg">請在 🟢綠、🔵藍、🔴紅 區各選 1 格</div>
+        
+        <button id="calc-btn" class="btn-calc" onclick="startCalculation()" style="display:none;">⚡ 開始自動計算解答</button>
+
+        <div class="inventory-icons" id="inventory-icons"></div>
+        
+        <button class="btn-reset" onclick="resetGame()">🔄 重新設定</button>
+    </div>
+
+    <div id="toast" class="toast-container"></div>
+
+    <script>
+        const boardTemplate = [
+            ['G', 'G', 'G', 'G', 'G'],
+            ['G', 'B', 'R', 'W', 'G'],
+            ['W', 'B', 'R', 'R', 'R'],
+            ['B', 'B', 'B', 'B', 'R'],
+            ['B', 'B', 'W', 'R', 'R']
+        ];
+
+        const targetPieces = [
+            { id: 0, matrix: [[1, 1], [1, 0], [1, 0]] },
+            { id: 1, matrix: [[1, 1], [1, 1]] },
+            { id: 2, matrix: [[1, 0], [1, 1], [1, 0]] },
+            { id: 3, matrix: [[1, 1], [1, 0]] },
+            { id: 4, matrix: [[1], [1], [1]] },
+            { id: 5, matrix: [[1, 0], [1, 1], [0, 1]] }
+        ];
+
+        let boardState = Array(5).fill(null).map(() => Array(5).fill(0));
+        let blockedColors = { 'G': null, 'B': null, 'R': null };
+        let gameState = 'SETUP'; // SETUP, SOLVING, SOLVED
+        let completedPiecesIds = [];
+        
+        const colorClasses = { 'G': 'bg-green', 'B': 'bg-blue', 'R': 'bg-red', 'W': 'bg-white' };
+
+        let greenCells = [], redCells = [], blueCells = [];
+        for(let r=0; r<5; r++){
+            for(let c=0; c<5; c++){
+                if(boardTemplate[r][c]==='G') greenCells.push({r,c});
+                if(boardTemplate[r][c]==='R') redCells.push({r,c});
+                if(boardTemplate[r][c]==='B') blueCells.push({r,c});
+            }
+        }
+
+        // ====== 演算法核心：預處理積木的所有翻轉與旋轉型態 ======
+        const piecesOffsets = []; // 結構: piecesOffsets[pid][shapeId] = [ {dr, dc}, ... ]
+
+        function preparePieces() {
+            targetPieces.forEach(p => {
+                let shapes = getTransformations(p.matrix);
+                let uniqueOffsets = [];
+                
+                shapes.forEach(shape => {
+                    let pts = [];
+                    for (let r = 0; r < shape.length; r++) {
+                        for (let c = 0; c < shape[0].length; c++) {
+                            if (shape[r][c] === 1) pts.push({r, c});
+                        }
+                    }
+                    
+                    // 以找出的第一個點為基準 (0, 0)，計算其餘點的相對座標
+                    let firstPt = pts[0];
+                    let offsets = pts.map(pt => ({ dr: pt.r - firstPt.r, dc: pt.c - firstPt.c }));
+                    
+                    // 檢查此形狀的相對座標是否已經存在過 (過濾重複的對稱圖形)
+                    let isDuplicate = uniqueOffsets.some(existing => {
+                        if (existing.length !== offsets.length) return false;
+                        for(let i=0; i<offsets.length; i++) {
+                            if (existing[i].dr !== offsets[i].dr || existing[i].dc !== offsets[i].dc) return false;
+                        }
+                        return true;
+                    });
+                    
+                    if (!isDuplicate) {
+                        uniqueOffsets.push(offsets);
+                    }
+                });
+                piecesOffsets.push(uniqueOffsets);
+            });
+        }
+
+        function getTransformations(matrix) {
+            let transforms = []; let current = matrix;
+            for (let i = 0; i < 4; i++) {
+                transforms.push(current); 
+                transforms.push(current.map(row => [...row].reverse())); // 左右翻轉
+                // 旋轉 90 度
+                let r = current.length, c = current[0].length;
+                let rotated = Array(c).fill(null).map(() => Array(r).fill(0));
+                for (let x = 0; x < r; x++) {
+                    for (let y = 0; y < c; y++) { rotated[y][r - 1 - x] = current[x][y]; }
+                }
+                current = rotated;
+            }
+            return transforms;
+        }
+
+        // ====== 初始化與 UI ======
+        function init() {
+            preparePieces();
+            renderBoard();
+            renderInventoryIcons();
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.innerText = message;
+            toast.className = 'toast-container show toast-error';
+            setTimeout(() => { toast.classList.remove('show'); }, 2000);
+        }
+
+        function calculateQuizId(g, r, b) {
+            if(!g || !r || !b) return null;
+            let gIdx = greenCells.findIndex(c => c.r === g.r && c.c === g.c);
+            let rIdx = redCells.findIndex(c => c.r === r.r && c.c === r.c);
+            let bIdx = blueCells.findIndex(c => c.r === b.r && c.c === b.c);
+            if(gIdx === -1 || rIdx === -1 || bIdx === -1) return 999;
+            return (gIdx * 56) + (rIdx * 8) + bIdx + 1;
+        }
+
+        function updateQuizInfoPanel() {
+            const panel = document.getElementById('quiz-info');
+            if (gameState === 'SETUP') {
+                if (blockedColors['G'] && blockedColors['B'] && blockedColors['R']) {
+                    const qId = calculateQuizId(blockedColors['G'], blockedColors['R'], blockedColors['B']);
+                    panel.style.background = '#e8f5e9';
+                    panel.style.color = '#2e7d32';
+                    panel.innerText = `題目編號：#${qId} / 392 (已就緒)`;
+                } else {
+                    panel.style.background = '#e3f2fd';
+                    panel.style.color = '#1565c0';
+                    panel.innerText = '👉 步驟一：請在下方點選設定阻擋格';
+                }
+            } else if (gameState === 'SOLVED') {
+                const qId = calculateQuizId(blockedColors['G'], blockedColors['R'], blockedColors['B']);
+                panel.style.background = '#fff8e1';
+                panel.style.color = '#f57f17';
+                panel.innerText = `💡 題目 #${qId} 的標準解答`;
+            }
+        }
+
+        function renderBoard() {
+            const boardEl = document.getElementById('game-board');
+            boardEl.innerHTML = '';
+            boardEl.className = (gameState === 'SETUP') ? "board setup-phase" : "board solved-phase";
+
+            for (let r = 0; r < 5; r++) {
+                for (let c = 0; c < 5; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    if (gameState === 'SETUP') cell.classList.add(colorClasses[boardTemplate[r][c]]);
+
+                    const val = boardState[r][c];
+                    if (val === -1) {
+                        cell.classList.add('blocked');
+                    } else if (val >= 20) {
+                        const pid = val - 20;
+                        cell.style.backgroundColor = `var(--color-p${pid})`;
+                        // 修改：不再添加 "P1~P6" 文字，僅保留純色塊
+                        cell.innerText = ''; 
+                    }
+                    cell.addEventListener('click', () => handleCellClick(r, c));
+                    boardEl.appendChild(cell);
+                }
+            }
+            updateQuizInfoPanel();
+        }
+
+        function handleCellClick(r, c) {
+            if (gameState !== 'SETUP') return;
+
+            const colorType = boardTemplate[r][c];
+            if (colorType === 'W') { 
+                showToast('❌ 白色格子不能選為阻擋格！'); 
+                return; 
+            }
+
+            // 取消原本的同色阻擋
+            if (blockedColors[colorType] !== null) {
+                boardState[blockedColors[colorType].r][blockedColors[colorType].c] = 0;
+            }
+
+            // 若點擊的是已選的格子，則取消選取 (Toggle)
+            if (blockedColors[colorType] && blockedColors[colorType].r === r && blockedColors[colorType].c === c) {
+                blockedColors[colorType] = null;
+                boardState[r][c] = 0;
+            } else {
+                boardState[r][c] = -1;
+                blockedColors[colorType] = { r, c };
+            }
+
+            if (blockedColors['G'] && blockedColors['B'] && blockedColors['R']) {
+                document.getElementById('status-msg').innerText = '✅ 阻擋格設定完成！請點擊自動計算。';
+                document.getElementById('calc-btn').style.display = 'block';
+            } else {
+                document.getElementById('status-msg').innerText = '請在 🟢綠、🔵藍、🔴紅 區各選 1 格';
+                document.getElementById('calc-btn').style.display = 'none';
+            }
+            renderBoard();
+        }
+
+        // ====== 演算法核心：DFS Backtracking 求解 ======
+        function solveBoard() {
+            // 拷貝一份當前只有阻擋格的乾淨棋盤
+            let board = Array(5).fill(null).map((_, r) => 
+                Array(5).fill(0).map((_, c) => boardState[r][c] === -1 ? -1 : 0)
+            );
+            let usedPieces = [false, false, false, false, false, false];
+            
+            function solve() {
+                // 1. 找出棋盤上第一個「未填滿」的空格
+                let emptyR = -1, emptyC = -1;
+                for (let r = 0; r < 5; r++) {
+                    for (let c = 0; c < 5; c++) {
+                        if (board[r][c] === 0) {
+                            emptyR = r; emptyC = c; break;
+                        }
+                    }
+                    if (emptyR !== -1) break;
+                }
+                
+                // 如果找不到空格，代表 22 格已經全被積木完美填滿！
+                if (emptyR === -1) return true; 
+                
+                // 2. 嘗試將每一個還沒使用的積木放到這個空格上
+                for (let pid = 0; pid < 6; pid++) {
+                    if (usedPieces[pid]) continue;
+                    
+                    usedPieces[pid] = true;
+                    let shapes = piecesOffsets[pid]; // 取出該積木所有可能的變換型態
+                    
+                    for (let s = 0; s < shapes.length; s++) {
+                        let shape = shapes[s];
+                        let canPlace = true;
+                        
+                        // 檢查此形狀是否能成功放入 (不越界、不重疊)
+                        for (let i = 0; i < shape.length; i++) {
+                            let r = emptyR + shape[i].dr;
+                            let c = emptyC + shape[i].dc;
+                            if (r < 0 || r >= 5 || c < 0 || c >= 5 || board[r][c] !== 0) {
+                                canPlace = false; break;
+                            }
+                        }
+                        
+                        if (canPlace) {
+                            // 執行放置
+                            for (let i = 0; i < shape.length; i++) {
+                                board[emptyR + shape[i].dr][emptyC + shape[i].dc] = 20 + pid;
+                            }
+                            
+                            // 遞迴嘗試下一步
+                            if (solve()) return true; // 若後續都能成功填滿，層層回傳 true
+                            
+                            // 拔除積木 (回溯，嘗試此積木的下一個形狀，或是換下一個積木)
+                            for (let i = 0; i < shape.length; i++) {
+                                board[emptyR + shape[i].dr][emptyC + shape[i].dc] = 0;
+                            }
+                        }
+                    }
+                    usedPieces[pid] = false; // 該積木的所有形狀都不行，標記為未使用，繼續下一個積木
+                }
+                return false; // 所有剩下的積木都無法填入這個空洞，此路不通，退回上一層
+            }
+            
+            if (solve()) {
+                boardState = board; // 將解出來的陣列覆蓋回去
+                return true;
+            }
+            return false;
+        }
+
+        function startCalculation() {
+            document.getElementById('status-msg').innerText = '⏳ 系統計算中...';
+            document.getElementById('calc-btn').style.display = 'none';
+            gameState = 'SOLVING';
+            
+            // 給瀏覽器一點時間重繪 UI，再開始繁重的運算
+            setTimeout(() => {
+                let t0 = performance.now();
+                let success = solveBoard();
+                let t1 = performance.now();
+                
+                if (success) {
+                    gameState = 'SOLVED';
+                    completedPiecesIds = [0, 1, 2, 3, 4, 5]; // 標記全部積木皆已使用
+                    document.getElementById('status-msg').innerHTML = `<span style="color:#2e7d32;">🎉 計算完成！耗時: ${Math.round(t1 - t0)} 毫秒</span>`;
+                    renderBoard();
+                    renderInventoryIcons();
+                } else {
+                    gameState = 'SETUP';
+                    document.getElementById('status-msg').innerText = '❌ 此題目無解 (此組合不成立)';
+                    document.getElementById('calc-btn').style.display = 'block';
+                    showToast('找不到符合的解答！');
+                }
+            }, 50);
+        }
+
+        function resetGame() {
+            boardState = Array(5).fill(null).map(() => Array(5).fill(0));
+            blockedColors = { 'G': null, 'B': null, 'R': null };
+            gameState = 'SETUP';
+            completedPiecesIds = [];
+            document.getElementById('status-msg').innerText = '請在 🟢綠、🔵藍、🔴紅 區各選 1 格';
+            document.getElementById('calc-btn').style.display = 'none';
+            renderBoard();
+            renderInventoryIcons();
+        }
+
+        function renderInventoryIcons() {
+            const container = document.getElementById('inventory-icons');
+            container.innerHTML = '';
+            targetPieces.forEach(p => {
+                const isUsed = completedPiecesIds.includes(p.id);
+                const card = document.createElement('div');
+                card.className = `icon-card ${isUsed ? 'used' : ''}`;
+                
+                const mini = document.createElement('div');
+                mini.classList.add('mini-grid');
+                mini.style.gridTemplateColumns = `repeat(${p.matrix[0].length}, 8px)`;
+                
+                for (let r = 0; r < p.matrix.length; r++) {
+                    for (let c = 0; c < p.matrix[0].length; c++) {
+                        const mCell = document.createElement('div');
+                        mCell.className = 'mini-cell';
+                        if (p.matrix[r][c] === 1) mCell.classList.add('filled', `p-${p.id}`);
+                        mini.appendChild(mCell);
+                    }
+                }
+                
+                // 修改：移除了 label 文字標籤，只將形狀 mini grid 加進卡片中
+                card.appendChild(mini);
+                container.appendChild(card);
+            });
+        }
+
+        init();
+    </script>
+</body>
+</html>
